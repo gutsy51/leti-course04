@@ -58,11 +58,11 @@ BEGIN
     PERFORM add_bom_item(p_pipe_system, p_nut, 1, m_pc);
     PERFORM add_bom_item(p_pipe_system, p_ptr1, 1, m_pc);
 
-    PERFORM add_bom_item(p_ptr1, p_pipe20, 1, m_m);
-    PERFORM add_bom_item(p_ptr2, p_pipe20, 1, m_m);
-    PERFORM add_bom_item(p_ptr2, p_hex41, 0.0004, m_ton);
-    PERFORM add_bom_item(p_ptr2, p_hex36, 0.0004, m_ton);
-    PERFORM add_bom_item(p_ptr2, p_round36, 0.0004, m_ton);
+    PERFORM add_bom_item(p_ptr1, p_pipe20, 0.0542, m_m);
+    PERFORM add_bom_item(p_ptr2, p_pipe20, 0.1024, m_m);
+    PERFORM add_bom_item(p_nut, p_hex41, 0.0004, m_ton);
+    PERFORM add_bom_item(p_sht, p_hex36, 0.0003, m_ton);
+    PERFORM add_bom_item(p_nipple, p_round36, 0.0004, m_ton);
 
     RAISE NOTICE '=== ЗАПОЛНЕНИЕ ЗАВЕРШЕНО ===';
 END $$;

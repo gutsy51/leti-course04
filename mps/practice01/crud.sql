@@ -112,13 +112,15 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION create_product(
     p_code text,
     p_name text,
-    p_measure_id integer DEFAULT NULL
+    p_measure_id integer,
+    p_modification_id integer DEFAULT NULL,
+    p_change_id integer DEFAULT NULL
 ) RETURNS integer AS
 $$
 DECLARE new_id integer;
 BEGIN
-    INSERT INTO products (code, name, measure_id)
-    VALUES (p_code, p_name, p_measure_id)
+    INSERT INTO products (code, name, measure_id, modification_id, change_id)
+    VALUES (p_code, p_name, p_measure_id, p_modification_id, p_change_id)
     RETURNING id INTO new_id;
 
     RETURN new_id;
@@ -130,14 +132,18 @@ CREATE OR REPLACE FUNCTION update_product(
     p_id integer,
     p_code text,
     p_name text,
-    p_measure_id integer
+    p_measure_id integer,
+    p_modification_id integer DEFAULT NULL,
+    p_change_id integer DEFAULT NULL
 ) RETURNS void AS
 $$
 BEGIN
     UPDATE products
     SET code = p_code,
         name = p_name,
-        measure_id = p_measure_id
+        measure_id = p_measure_id,
+        modification_id = p_modification_id,
+        change_id = p_change_id
     WHERE id = p_id;
 
     IF NOT FOUND THEN
@@ -160,33 +166,37 @@ END;
 $$ LANGUAGE plpgsql;
 
 
--- =============== PROPERTIES ===============
-
--- Добавляет свойство материала.
+-- Создаёт модификацию изделия.
 /*
-    Добавляет новую запись в таблицу material_properties.
+    Добавляет новую запись в таблицу products, представляющую модификацию существующего изделия.
 
     Вход:
-        p_product_id (integer): изделие, к которому относится свойство,
-        p_name (text): название свойства,
-        p_value (text): значение свойства.
+        p_base_id (integer): ID базового изделия, от которого создаётся модификация,
+        p_code (text): код модификации,
+        p_name (text): название модификации,
+        p_measure_id (integer, опционально): единица измерения. Если не указано, может быть NULL.
     Выход:
-        integer: ID созданного свойства.
+        integer: ID созданной модификации.
     Эффекты:
-        Добавление строки в таблицу material_properties.
+        Добавление строки в таблицу products с ссылкой на базовое изделие.
     Требования:
-        product_id должен ссылаться на существующее изделие.
+        Базовое изделие с указанным p_base_id должно существовать.
 */
-CREATE OR REPLACE FUNCTION add_property(
-    p_product_id integer,
+CREATE OR REPLACE FUNCTION create_modification(
+    p_base_id integer,
+    p_code text,
     p_name text,
-    p_value text
+    p_measure_id integer DEFAULT NULL
 ) RETURNS integer AS
 $$
 DECLARE new_id integer;
 BEGIN
-    INSERT INTO material_properties(product_id, property_name, property_value)
-    VALUES (p_product_id, p_name, p_value)
+    IF NOT EXISTS (SELECT 1 FROM products WHERE id = p_base_id) THEN
+        RAISE EXCEPTION 'Базовое изделие % не существует', p_base_id;
+    END IF;
+
+    INSERT INTO products (code, name, measure_id, modification_id)
+    VALUES (p_code, p_name, p_measure_id, p_base_id)
     RETURNING id INTO new_id;
 
     RETURN new_id;
@@ -194,64 +204,44 @@ END;
 $$ LANGUAGE plpgsql;
 
 
--- Обновляет свойство материала.
+-- Создаёт изменение изделия.
 /*
-    Изменяет существующую запись material_properties.
+    Добавляет новую запись в таблицу products, представляющую изменение (change) существующего изделия.
 
     Вход:
-        p_id (integer): ID свойства,
-        p_name (text): новое название,
-        p_value (text): новое значение.
+        p_base_id (integer): ID изделия или модификации, от которого создаётся изменение,
+        p_code (text): код изменения,
+        p_name (text): название изменения,
+        p_measure_id (integer, опционально): единица измерения. Если не указано, может быть NULL.
     Выход:
-        void.
+        integer: ID созданного изменения.
     Эффекты:
-        Модификация строки таблицы material_properties.
+        Добавление строки в таблицу products с ссылкой на родительское изделие/модификацию.
     Требования:
-        Свойство материала с таким ID должно существовать.
+        Базовое изделие или модификация с указанным p_base_id должны существовать.
 */
-CREATE OR REPLACE FUNCTION update_property(
-    p_id integer,
+
+CREATE OR REPLACE FUNCTION create_change(
+    p_base_id integer,
+    p_code text,
     p_name text,
-    p_value text
-) RETURNS void AS
+    p_measure_id integer DEFAULT NULL
+) RETURNS integer AS
 $$
+DECLARE new_id integer;
 BEGIN
-    UPDATE material_properties
-    SET property_name = p_name,
-        property_value = p_value
-    WHERE id = p_id;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'Свойства материала % не существует', p_id;
+    IF NOT EXISTS (SELECT 1 FROM products WHERE id = p_base_id) THEN
+        RAISE EXCEPTION 'Базовое изделие или модификация % не существует', p_base_id;
     END IF;
+
+    INSERT INTO products (code, name, measure_id, change_id)
+    VALUES (p_code, p_name, p_measure_id, p_base_id)
+    RETURNING id INTO new_id;
+
+    RETURN new_id;
 END;
 $$ LANGUAGE plpgsql;
 
-
--- Удаляет свойство материала.
-/*
-    Удаляет запись из material_properties.
-
-    Вход:
-        p_id (integer): ID свойства.
-    Выход:
-        void.
-    Эффекты:
-        Удаление строки.
-    Требования:
-        Свойство с таким ID должно существовать.
-*/
-CREATE OR REPLACE FUNCTION delete_property(p_id integer)
-RETURNS void AS
-$$
-BEGIN
-    DELETE FROM material_properties WHERE id = p_id;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'Свойства материала % не существует', p_id;
-    END IF;
-END;
-$$ LANGUAGE plpgsql;
 
 
 -- =============== BOM ===============
@@ -262,9 +252,8 @@ $$ LANGUAGE plpgsql;
 
     Вход:
         p_parent_id (integer): ID изделия, которому добавляется компонент,
-        p_child_id  (integer): ID добавляемого компонента,
-        p_qty       (numeric): количество компонента,
-        p_measure_id (integer): единица измерения количества.
+        p_child_id (integer): ID добавляемого компонента,
+        p_qty (numeric): количество компонента,
     Выход:
         void.
     Эффекты:
@@ -272,75 +261,89 @@ $$ LANGUAGE plpgsql;
         Добавление строки в таблицу bom.
     Требования:
         Оба изделия (родитель и дочерний компонент) должны существовать в таблице products,
-        p_measure_id должен соответствовать допустимой единице измерения,
         Добавление компонента не должно создавать цикл в структуре изделия.
 */
 CREATE OR REPLACE FUNCTION add_bom_item(
     p_parent_id integer,
     p_child_id integer,
-    p_qty numeric,
-    p_measure_id integer
+    p_qty numeric
 ) RETURNS void AS
 $$
-DECLARE
-    exists_parent boolean;
-    exists_child boolean;
 BEGIN
-    SELECT EXISTS(SELECT 1 FROM "products" WHERE id = p_parent_id)
-    INTO exists_parent;
-
-    SELECT EXISTS(SELECT 1 FROM "products" WHERE id = p_child_id)
-    INTO exists_child;
-
-    IF NOT exists_parent THEN
-        RAISE EXCEPTION 'Изделие % не существует', p_parent_id;
+    IF NOT EXISTS (SELECT 1 FROM products WHERE id = p_parent_id) THEN
+        RAISE EXCEPTION 'Родительское изделие % не существует', p_parent_id;
     END IF;
 
-    IF NOT exists_child THEN
-        RAISE EXCEPTION 'Изделие % не существует', p_child_id;
+    IF NOT EXISTS (SELECT 1 FROM products WHERE id = p_child_id) THEN
+        RAISE EXCEPTION 'Компонент % не существует', p_child_id;
     END IF;
 
-    PERFORM check_bom_cycle(p_parent_id, p_child_id);
-
-    INSERT INTO bom (parent_id, child_id, quantity, measure_id)
-    VALUES (p_parent_id, p_child_id, p_qty, p_measure_id);
+    INSERT INTO bom (parent_id, child_id, quantity)
+    VALUES (p_parent_id, p_child_id, p_qty);
 END;
 $$ LANGUAGE plpgsql;
 
 
+-- Обновляет запись компонента в изделии (BOM).
+/*
+    Изменяет все атрибуты существующей записи BOM.
+
+    Вход:
+        p_parent_id (integer): ID родительского изделия,
+        p_child_id (integer): ID компонента,
+        p_quantity (numeric): новое количество (>0).
+    Выход:
+        void.
+    Эффекты:
+        Обновляется вся строка в таблице bom.
+    Требования:
+        Запись (parent_id, child_id) должна существовать.
+*/
 CREATE OR REPLACE FUNCTION update_bom_item(
-    p_id integer,
     p_parent_id integer,
     p_child_id integer,
-    p_qty numeric,
-    p_measure_id integer
+    p_qty numeric
 ) RETURNS void AS
 $$
 BEGIN
     PERFORM check_bom_cycle(p_parent_id, p_child_id);
 
     UPDATE bom
-    SET parent_id = p_parent_id,
-        child_id = p_child_id,
-        quantity = p_qty,
-        measure_id = p_measure_id
-    WHERE id = p_id;
+    SET quantity = p_qty
+    WHERE parent_id = p_parent_id AND child_id = p_child_id;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'Элемента BOM % не существует', p_id;
+        RAISE EXCEPTION 'Компонент % в изделии % не найден', p_child_id, p_parent_id;
     END IF;
 END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE FUNCTION delete_bom_item(p_id integer)
-RETURNS void AS
+-- Удаляет компонент из BOM.
+/*
+    Удаляет строку из таблицы bom.
+
+    Вход:
+        p_parent_id (integer): ID родительского изделия,
+        p_child_id (integer): ID компонента.
+    Выход:
+        void.
+    Эффекты:
+        Строка удаляется из таблицы bom.
+    Требования:
+        Запись (parent_id, child_id) должна существовать.
+*/
+CREATE OR REPLACE FUNCTION delete_bom_item(
+    p_parent_id integer,
+    p_child_id integer
+) RETURNS void AS
 $$
 BEGIN
-    DELETE FROM bom WHERE id = p_id;
+    DELETE FROM bom
+    WHERE parent_id = p_parent_id AND child_id = p_child_id;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'Элемента BOM % не существует', p_id;
+        RAISE EXCEPTION 'Компонент % в изделии % не найден', p_child_id, p_parent_id;
     END IF;
 END;
 $$ LANGUAGE plpgsql;
@@ -355,7 +358,7 @@ $$ LANGUAGE plpgsql;
     Вход:
         p_parent_id (integer): ID изделия.
     Выход:
-        SET_OF (child_id, child_name, qty, measure).
+        SET_OF (child_id, child_name, qty).
     Эффекты:
         Нет (чтение).
     Требования:
@@ -365,19 +368,16 @@ CREATE OR REPLACE FUNCTION get_bom_children(p_parent_id integer)
 RETURNS TABLE (
     child_id int,
     child_name text,
-    qty numeric,
-    measure text
+    qty numeric
 ) AS $$
 BEGIN
     RETURN QUERY
     SELECT
         b.child_id,
         p.name,
-        b.quantity,
-        m.name_short
+        b.quantity
     FROM bom b
     JOIN products p ON p.id = b.child_id
-    JOIN measure m ON m.id = b.measure_id
     WHERE b.parent_id = p_parent_id;
 END; $$ LANGUAGE plpgsql;
 
@@ -389,7 +389,7 @@ END; $$ LANGUAGE plpgsql;
     Вход:
         p_root (integer): ID корневого изделия.
     Выход:
-        SET_OF (level, parent_id, child_id, child_name, qty, measure).
+        SET_OF (level, parent_id, child_id, child_name, qty).
     Эффекты:
         Нет (чтение).
     Требования:
@@ -401,8 +401,7 @@ RETURNS TABLE (
     parent_id int,
     child_id int,
     child_name text,
-    qty numeric,
-    measure text
+    qty numeric
 ) AS $$
 BEGIN
     RETURN QUERY
@@ -411,11 +410,9 @@ BEGIN
                b.parent_id,
                b.child_id,
                p.name,
-               b.quantity,
-               m.name_short::text
+               b.quantity
         FROM bom b
         JOIN products p ON p.id = b.child_id
-        JOIN measure m ON m.id = b.measure_id
         WHERE b.parent_id = p_root
 
         UNION ALL
@@ -424,11 +421,9 @@ BEGIN
                b.parent_id,
                b.child_id,
                p.name,
-               b.quantity,
-               m.name_short::text
+               b.quantity
         FROM bom b
         JOIN products p ON p.id = b.child_id
-        JOIN measure m ON m.id = b.measure_id
         JOIN t ON b.parent_id = t.child_id
     )
     SELECT * FROM t;

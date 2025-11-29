@@ -1,5 +1,5 @@
 -- 1. Очистка БД.
-TRUNCATE TABLE bom, material_properties, products, measure
+TRUNCATE TABLE bom, products, measure
 RESTART IDENTITY CASCADE;
 
 -- 2. Заполнение данными.
@@ -43,26 +43,26 @@ BEGIN
 
     SELECT create_product('КП25.00.21.220', 'Трубопровод', m_pc) INTO p_pipe_system;
     SELECT create_product('КП25.00.21.221', 'Патрубок', m_pc) INTO p_ptr1;
-    SELECT create_product('КП25.00.21.221-01', 'Патрубок', m_pc) INTO p_ptr2;
+    SELECT create_modification(p_ptr1, 'КП25.00.21.221-01', 'Патрубок', m_pc) INTO p_ptr2;
     SELECT create_product('31.26.01.028', 'Ниппель', m_pc) INTO p_nipple;
     SELECT create_product('31.01.07.017', 'Штуцер', m_pc) INTO p_sht;
     SELECT create_product('11.01.02.022-01', 'Гайка', m_pc) INTO p_nut;
 
 
     RAISE NOTICE '=== ЗАПОЛНЕНИЕ BOM ===';
-    PERFORM add_bom_item(p_pipe_system, p_wire, 0.2, m_kg);
-    PERFORM add_bom_item(p_pipe_system, p_co2, 0.24, m_kg);
-    PERFORM add_bom_item(p_pipe_system, p_ptr2, 1, m_pc);
-    PERFORM add_bom_item(p_pipe_system, p_nipple, 1, m_pc);
-    PERFORM add_bom_item(p_pipe_system, p_sht, 1, m_pc);
-    PERFORM add_bom_item(p_pipe_system, p_nut, 1, m_pc);
-    PERFORM add_bom_item(p_pipe_system, p_ptr1, 1, m_pc);
+    PERFORM add_bom_item(p_pipe_system, p_wire, 0.2);
+    PERFORM add_bom_item(p_pipe_system, p_co2, 0.24);
+    PERFORM add_bom_item(p_pipe_system, p_ptr2, 1);
+    PERFORM add_bom_item(p_pipe_system, p_nipple, 1);
+    PERFORM add_bom_item(p_pipe_system, p_sht, 1);
+    PERFORM add_bom_item(p_pipe_system, p_nut, 1);
+    PERFORM add_bom_item(p_pipe_system, p_ptr1, 1);
 
-    PERFORM add_bom_item(p_ptr1, p_pipe20, 0.0542, m_m);
-    PERFORM add_bom_item(p_ptr2, p_pipe20, 0.1024, m_m);
-    PERFORM add_bom_item(p_nut, p_hex41, 0.0004, m_ton);
-    PERFORM add_bom_item(p_sht, p_hex36, 0.0003, m_ton);
-    PERFORM add_bom_item(p_nipple, p_round36, 0.0004, m_ton);
+    PERFORM add_bom_item(p_ptr1, p_pipe20, 0.0542);
+    PERFORM add_bom_item(p_ptr2, p_pipe20, 0.1024);
+    PERFORM add_bom_item(p_nut, p_hex41, 0.0004);
+    PERFORM add_bom_item(p_sht, p_hex36, 0.0003);
+    PERFORM add_bom_item(p_nipple, p_round36, 0.0004);
 
     RAISE NOTICE '=== ЗАПОЛНЕНИЕ ЗАВЕРШЕНО ===';
 END $$;
@@ -132,13 +132,12 @@ BEGIN
     SELECT id INTO root_id FROM products WHERE code = 'КП25.00.21.220';
 
     FOR rec IN SELECT * FROM get_bom_tree(root_id) LOOP
-        RAISE NOTICE '[Уровень %] parent_id=% child_id=% name=% qty=% %',
+        RAISE NOTICE '[Уровень %] parent_id=% child_id=% name=% qty=%',
             rec.level,
             rec.parent_id,
             rec.child_id,
             rec.child_name,
-            rec.qty,
-            rec.measure;
+            rec.qty;
     END LOOP;
 
     RAISE NOTICE '=== ТЕСТ ЗАВЕРШЁН ===';

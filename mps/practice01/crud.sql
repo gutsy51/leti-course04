@@ -90,6 +90,165 @@ END;
 $$ LANGUAGE plpgsql;
 
 
+-- =============== CLASS ===============
+
+-- Создаёт новый класс.
+ /*
+    Добавляет запись в таблицу class.
+
+    Вход:
+        p_name (text): внутреннее имя класса,
+        p_display_name (text): отображаемое имя класса,
+        p_parent_id (integer, опционально): родительский класс,
+        p_measure_id (integer): единица измерения.
+    Выход:
+        integer: ID созданного класса.
+    Эффекты:
+        Добавляется новая запись в таблицу class.
+    Требования:
+        p_measure_id должен существовать в таблице measure,
+        если указан p_parent_id — родительский класс должен существовать.
+*/
+CREATE OR REPLACE FUNCTION create_class(
+    p_name text,
+    p_display_name text,
+    p_measure_id integer,
+    p_parent_id integer DEFAULT NULL
+) RETURNS integer AS
+$$
+DECLARE new_id integer;
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM measure WHERE id = p_measure_id) THEN
+        RAISE EXCEPTION 'Единица измерения % не существует', p_measure_id;
+    END IF;
+
+    IF p_parent_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM class WHERE id = p_parent_id) THEN
+        RAISE EXCEPTION 'Родительский класс % не существует', p_parent_id;
+    END IF;
+
+    INSERT INTO class (name, display_name, parent_id, measure_id)
+    VALUES (p_name, p_display_name, p_parent_id, p_measure_id)
+    RETURNING id INTO new_id;
+
+    RETURN new_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Обновляет существующий класс.
+ /*
+    Изменяет все атрибуты класса.
+
+    Вход:
+        p_id (integer): ID класса,
+        p_name (text): новое внутреннее имя класса,
+        p_display_name (text): новое отображаемое имя,
+        p_measure_id (integer): новая единица измерения,
+        p_parent_id (integer, опционально): новый родительский класс.
+    Выход:
+        void.
+    Эффекты:
+        Обновляет запись в таблице class.
+    Требования:
+        Класс с указанным p_id должен существовать,
+        p_measure_id должен существовать,
+        p_parent_id, если указан, должен существовать и не создавать циклических ссылок.
+*/
+CREATE OR REPLACE FUNCTION update_class(
+    p_id integer,
+    p_name text,
+    p_display_name text,
+    p_measure_id integer,
+    p_parent_id integer DEFAULT NULL
+) RETURNS void AS
+$$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM class WHERE id = p_id) THEN
+        RAISE EXCEPTION 'Класс % не существует', p_id;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM measure WHERE id = p_measure_id) THEN
+        RAISE EXCEPTION 'Единица измерения % не существует', p_measure_id;
+    END IF;
+
+    IF p_parent_id IS NOT NULL THEN
+        IF NOT EXISTS (SELECT 1 FROM class WHERE id = p_parent_id) THEN
+            RAISE EXCEPTION 'Родительский класс % не существует', p_parent_id;
+        END IF;
+
+        -- Проверка на цикл
+        WITH RECURSIVE ancestors AS (
+            SELECT id, parent_id FROM class WHERE id = p_parent_id
+            UNION ALL
+            SELECT c.id, c.parent_id
+            FROM class c
+            JOIN ancestors a ON c.id = a.parent_id
+        )
+        SELECT 1 FROM ancestors WHERE id = p_id;
+        IF FOUND THEN
+            RAISE EXCEPTION 'Нельзя установить родителем класс % — цикл', p_parent_id;
+        END IF;
+    END IF;
+
+    UPDATE class
+    SET name = p_name,
+        display_name = p_display_name,
+        measure_id = p_measure_id,
+        parent_id = p_parent_id
+    WHERE id = p_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Удаляет класс.
+ /*
+    Удаляет класс из таблицы.
+
+    Вход:
+        p_id (integer): ID класса.
+    Выход:
+        void.
+    Эффекты:
+        Запись удаляется.
+    Требования:
+        Класс должен существовать,
+        не должно быть дочерних классов.
+*/
+CREATE OR REPLACE FUNCTION delete_class(p_id integer) RETURNS void AS
+$$
+BEGIN
+    IF EXISTS (SELECT 1 FROM class WHERE parent_id = p_id) THEN
+        RAISE EXCEPTION 'Нельзя удалить класс %, есть дочерние классы', p_id;
+    END IF;
+
+    DELETE FROM class WHERE id = p_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Класс % не найден', p_id;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Получить список всех классов.
+ /*
+    Возвращает все классы.
+
+    Выход:
+        SET_OF (id, name, display_name, parent_id, measure_id).
+*/
+CREATE OR REPLACE FUNCTION get_classes()
+RETURNS TABLE (
+    id integer,
+    name text,
+    display_name text,
+    parent_id integer,
+    measure_id integer
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT id, name, display_name, parent_id, measure_id
+    FROM class;
+END; $$ LANGUAGE plpgsql;
+
+
 -- =============== PRODUCT ===============
 
 -- Создаёт изделие.
@@ -99,7 +258,10 @@ $$ LANGUAGE plpgsql;
     Вход:
         p_code (text): код изделия,
         p_name (text): название изделия,
-        p_measure_id (integer, опционально): единица измерения.
+        p_measure_id (integer): единица измерения,
+        p_class_id (integer, опционально): класс изделия,
+        p_modification_id (integer, опционально): родитель модификации,
+        p_change_id (integer, опционально): родитель изменения.
     Выход:
         integer: ID созданного изделия.
     Эффекты:
@@ -107,20 +269,43 @@ $$ LANGUAGE plpgsql;
     Требования:
         Название изделия не должно быть пустым,
         Код изделия должен быть уникальным,
-        p_measure_id, если указан, должен ссылаться на существующую единицу измерения.
+        p_measure_id должен существовать,
+        p_class_id, если указан, должен существовать,
+        p_modification_id, p_change_id, если указаны, должны существовать.
 */
 CREATE OR REPLACE FUNCTION create_product(
     p_code text,
     p_name text,
     p_measure_id integer,
+    p_class_id integer DEFAULT NULL,
     p_modification_id integer DEFAULT NULL,
     p_change_id integer DEFAULT NULL
 ) RETURNS integer AS
 $$
 DECLARE new_id integer;
 BEGIN
-    INSERT INTO products (code, name, measure_id, modification_id, change_id)
-    VALUES (p_code, p_name, p_measure_id, p_modification_id, p_change_id)
+    IF p_name IS NULL OR trim(p_name) = '' THEN
+        RAISE EXCEPTION 'Название изделия не может быть пустым';
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM measure WHERE id = p_measure_id) THEN
+        RAISE EXCEPTION 'Единица измерения % не существует', p_measure_id;
+    END IF;
+
+    IF p_class_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM class WHERE id = p_class_id) THEN
+        RAISE EXCEPTION 'Класс изделия % не существует', p_class_id;
+    END IF;
+
+    IF p_modification_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM products WHERE id = p_modification_id) THEN
+        RAISE EXCEPTION 'Родитель модификации % не существует', p_modification_id;
+    END IF;
+
+    IF p_change_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM products WHERE id = p_change_id) THEN
+        RAISE EXCEPTION 'Родитель изменения % не существует', p_change_id;
+    END IF;
+
+    INSERT INTO products (code, name, measure_id, class_id, modification_id, change_id)
+    VALUES (p_code, p_name, p_measure_id, p_class_id, p_modification_id, p_change_id)
     RETURNING id INTO new_id;
 
     RETURN new_id;
@@ -128,39 +313,101 @@ END;
 $$ LANGUAGE plpgsql;
 
 
+-- Обновляет существующее изделие.
+/*
+    Изменяет все атрибуты изделия.
+
+    Вход:
+        p_id (integer): ID изделия,
+        p_code (text): новый код изделия,
+        p_name (text): новое название,
+        p_measure_id (integer): единица измерения,
+        p_class_id (integer, опционально): класс изделия,
+        p_modification_id (integer, опционально): родитель модификации,
+        p_change_id (integer, опционально): родитель изменения.
+    Выход:
+        void.
+    Эффекты:
+        Обновляется запись в таблице products.
+    Требования:
+        Изделие с указанным p_id должно существовать,
+        p_measure_id и p_class_id должны существовать, если указаны,
+        p_modification_id и p_change_id должны существовать, если указаны.
+*/
 CREATE OR REPLACE FUNCTION update_product(
     p_id integer,
     p_code text,
     p_name text,
     p_measure_id integer,
+    p_class_id integer DEFAULT NULL,
     p_modification_id integer DEFAULT NULL,
     p_change_id integer DEFAULT NULL
 ) RETURNS void AS
 $$
 BEGIN
+    IF NOT EXISTS (SELECT 1 FROM products WHERE id = p_id) THEN
+        RAISE EXCEPTION 'Изделие % не существует', p_id;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM measure WHERE id = p_measure_id) THEN
+        RAISE EXCEPTION 'Единица измерения % не существует', p_measure_id;
+    END IF;
+
+    IF p_class_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM class WHERE id = p_class_id) THEN
+        RAISE EXCEPTION 'Класс изделия % не существует', p_class_id;
+    END IF;
+
+    IF p_modification_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM products WHERE id = p_modification_id) THEN
+        RAISE EXCEPTION 'Родитель модификации % не существует', p_modification_id;
+    END IF;
+
+    IF p_change_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM products WHERE id = p_change_id) THEN
+        RAISE EXCEPTION 'Родитель изменения % не существует', p_change_id;
+    END IF;
+
     UPDATE products
     SET code = p_code,
         name = p_name,
         measure_id = p_measure_id,
+        class_id = p_class_id,
         modification_id = p_modification_id,
         change_id = p_change_id
     WHERE id = p_id;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'Изделия % не существует', p_id;
-    END IF;
 END;
 $$ LANGUAGE plpgsql;
 
 
+-- Удаляет изделие.
+/*
+    Удаляет запись изделия из таблицы products.
+
+    Вход:
+        p_id (integer): ID изделия.
+    Выход:
+        void.
+    Эффекты:
+        Запись удаляется.
+    Требования:
+        Изделие должно существовать,
+        не должно быть ссылок в BOM (parent_id или child_id),
+        не должно быть дочерних модификаций или изменений.
+*/
 CREATE OR REPLACE FUNCTION delete_product(p_id integer)
 RETURNS void AS
 $$
 BEGIN
+    IF EXISTS (SELECT 1 FROM bom WHERE parent_id = p_id OR child_id = p_id) THEN
+        RAISE EXCEPTION 'Нельзя удалить изделие %, оно используется в BOM', p_id;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM products WHERE modification_id = p_id OR change_id = p_id) THEN
+        RAISE EXCEPTION 'Нельзя удалить изделие %, есть модификации или изменения', p_id;
+    END IF;
+
     DELETE FROM products WHERE id = p_id;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'Изделия % не существует', p_id;
+        RAISE EXCEPTION 'Изделие % не найдено', p_id;
     END IF;
 END;
 $$ LANGUAGE plpgsql;

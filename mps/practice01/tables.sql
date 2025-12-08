@@ -1,5 +1,5 @@
 -- Удалить старые таблицы, если существуют.
-DROP TABLE IF EXISTS bom, products, measure, material_properties;
+DROP TABLE IF EXISTS bom, class, products, measure, material_properties;
 
 -- Единицы измерения.
 CREATE TABLE measure (
@@ -13,6 +13,17 @@ CREATE TABLE measure (
     CONSTRAINT uq_measure_name_short UNIQUE (name_short)
 );
 
+-- Классы.
+CREATE TABLE class (
+    id SERIAL PRIMARY KEY,
+
+    name TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+
+    parent_id INTEGER REFERENCES class(id),
+    measure_id INTEGER NOT NULL REFERENCES measure(id)
+);
+
 -- Справочник изделий.
 CREATE TABLE products (
     id SERIAL PRIMARY KEY,
@@ -20,6 +31,7 @@ CREATE TABLE products (
     name TEXT NOT NULL,         -- Труба 25х2.5
 
     measure_id INTEGER NOT NULL REFERENCES measure(id),  -- ЕИ измерения
+    class_id INTEGER REFERENCES class(id),               -- Класс изделия
     modification_id INTEGER REFERENCES products(id),     -- Родитель модификации
     change_id INTEGER REFERENCES products(id)            -- Родитель изменения
 );
@@ -33,3 +45,9 @@ CREATE TABLE bom (
 
     PRIMARY KEY (parent_id, child_id)
 );
+
+CREATE INDEX idx_product_spec_for_product
+    ON bom(parent_id);
+
+CREATE INDEX idx_product_spec_use_product
+    ON bom(child_id);

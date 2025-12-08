@@ -1,53 +1,65 @@
 -- 1. Очистка БД.
-TRUNCATE TABLE bom, products, measure
+TRUNCATE TABLE bom, products, class, measure
 RESTART IDENTITY CASCADE;
 
--- 2. Заполнение данными.
+-- 2. Заполнение справочников.
 DO $$
 DECLARE
-    m_kg  INT;
-    m_m   INT;
-    m_ton INT;
-    m_pc  INT;
+    -- Единицы измерения
+    m_default INT;
+    m_kg      INT;
+    m_m       INT;
+    m_ton     INT;
+    m_pc      INT;
 
-    p_pipe_system INT;  -- КП25.00.21.220
-    p_ptr1 INT;         -- КП25.00.21.221
-    p_ptr2 INT;         -- КП25.00.21.221-01
-    p_nipple INT;       -- 31.26.01.028
-    p_sht INT;          -- 31.01.07.017
-    p_nut INT;          -- 11.01.02.022-01
+    -- Классы
+    c_material INT;
+    c_pipe     INT;
+    c_fitting  INT;
 
-    -- материалы
-    p_wire INT;         -- Проволока
-    p_co2  INT;         -- Двуокись углерода
-    p_pipe20 INT;       -- Труба 20х2.8
-    p_hex41 INT;        -- шестигранник 41
-    p_hex36 INT;        -- шестигранник 36
-    p_round36 INT;      -- круг 36
+    -- Продукты
+    p_pipe_system INT;
+    p_ptr1 INT;
+    p_ptr2 INT;
+    p_nipple INT;
+    p_sht INT;
+    p_nut INT;
+
+    p_wire INT;
+    p_co2 INT;
+    p_pipe20 INT;
+    p_hex41 INT;
+    p_hex36 INT;
+    p_round36 INT;
 BEGIN
-    RAISE NOTICE '=== ЗАПОЛНЕНИЕ СПРАВОЧНИКОВ ===';
+    RAISE NOTICE '=== СПРАВОЧНИК ЕДИНИЦ ИЗМЕРЕНИЯ ===';
+    m_default := create_measure('Единица', 'ед');
+    m_kg      := create_measure('Килограмм', 'кг');
+    m_m       := create_measure('Метр', 'м');
+    m_ton     := create_measure('Тонна', 'т');
+    m_pc      := create_measure('Штука', 'шт');
 
-    RAISE NOTICE '=== СПРАВОЧНИК ЕИ ===';
-    SELECT create_measure('Килограмм', 'кг') INTO m_kg;
-    SELECT create_measure('Метр', 'м') INTO m_m;
-    SELECT create_measure('Тонна', 'т') INTO m_ton;
-    SELECT create_measure('Штука', 'шт') INTO m_pc;
+    RAISE NOTICE '=== СПРАВОЧНИК КЛАССОВ ===';
+    c_material := create_class('Материалы', 'Материалы', m_default);
+    c_pipe     := create_class('Трубы', 'Трубы', m_default);
+    c_fitting  := create_class('Фитинги', 'Фитинги', m_default);
 
-    RAISE NOTICE '=== СПРАВОЧНИК МАТЕРИАЛОВ / ИЗДЕЛИЙ ===';
-    SELECT create_product('M.WIRE', 'Проволока 1,2 СВ-08Г2с', m_kg) INTO p_wire;
-    SELECT create_product('M.CO2', 'Двуокись углерода жидкая ГОСТ 8050-85', m_kg) INTO p_co2;
-    SELECT create_product('M.PIPE20', 'Труба усл.прох.20х2,8 черная', m_m) INTO p_pipe20;
-    SELECT create_product('M.HEX41', 'Шестигранник 41 СТ45-Б-Т калибр.', m_ton) INTO p_hex41;
-    SELECT create_product('M.HEX36', 'Шестигранник 36 СТ45-Б-Т калибр.', m_ton) INTO p_hex36;
-    SELECT create_product('M.ROUND36', 'Круг 36-B-I СТ45-2ГП', m_ton) INTO p_round36;
+    RAISE NOTICE '=== СПРАВОЧНИК ПРОДУКТОВ ===';
+    -- Материалы
+    p_wire := create_product('M.WIRE', 'Проволока 1,2 СВ-08Г2с', m_kg, c_material);
+    p_co2  := create_product('M.CO2', 'Двуокись углерода жидкая ГОСТ 8050-85', m_kg, c_material);
+    p_pipe20 := create_product('M.PIPE20', 'Труба усл.прох.20х2,8 черная', m_m, c_pipe);
+    p_hex41 := create_product('M.HEX41', 'Шестигранник 41 СТ45-Б-Т калибр.', m_ton, c_material);
+    p_hex36 := create_product('M.HEX36', 'Шестигранник 36 СТ45-Б-Т калибр.', m_ton, c_material);
+    p_round36 := create_product('M.ROUND36', 'Круг 36-B-I СТ45-2ГП', m_ton, c_material);
 
-    SELECT create_product('КП25.00.21.220', 'Трубопровод', m_pc) INTO p_pipe_system;
-    SELECT create_product('КП25.00.21.221', 'Патрубок', m_pc) INTO p_ptr1;
-    SELECT create_modification(p_ptr1, 'КП25.00.21.221-01', 'Патрубок', m_pc) INTO p_ptr2;
-    SELECT create_product('31.26.01.028', 'Ниппель', m_pc) INTO p_nipple;
-    SELECT create_product('31.01.07.017', 'Штуцер', m_pc) INTO p_sht;
-    SELECT create_product('11.01.02.022-01', 'Гайка', m_pc) INTO p_nut;
-
+    -- Изделия
+    p_pipe_system := create_product('КП25.00.21.220', 'Трубопровод', m_pc, c_pipe);
+    p_ptr1       := create_product('КП25.00.21.221', 'Патрубок', m_pc, c_fitting);
+    p_ptr2       := create_modification(p_ptr1, 'КП25.00.21.221-01', 'Патрубок', m_pc);
+    p_nipple     := create_product('31.26.01.028', 'Ниппель', m_pc, c_fitting);
+    p_sht        := create_product('31.01.07.017', 'Штуцер', m_pc, c_fitting);
+    p_nut        := create_product('11.01.02.022-01', 'Гайка', m_pc, c_fitting);
 
     RAISE NOTICE '=== ЗАПОЛНЕНИЕ BOM ===';
     PERFORM add_bom_item(p_pipe_system, p_wire, 0.2);
@@ -66,6 +78,7 @@ BEGIN
 
     RAISE NOTICE '=== ЗАПОЛНЕНИЕ ЗАВЕРШЕНО ===';
 END $$;
+
 
 
 -- 3. Проверка CRUD.

@@ -132,6 +132,41 @@ BEGIN
     END IF;
 END $$;
 
+-- 5. Тест: Проверка защиты от циклов в BOM
+DO $$
+DECLARE
+    prod_a INTEGER;
+    prod_b INTEGER;
+    prod_c INTEGER;
+BEGIN
+    RAISE NOTICE '=== ТЕСТ: Проверка защиты от циклов в BOM ===';
+
+    prod_a := create_product('CYCLE.A', 'Цикличное изделие A', 1);
+    prod_b := create_product('CYCLE.B', 'Цикличное изделие B', 1);
+    prod_c := create_product('CYCLE.C', 'Цикличное изделие C', 1);
+
+    PERFORM add_bom_item(prod_a, prod_b, 1);
+    PERFORM add_bom_item(prod_b, prod_c, 1);
+
+    RAISE NOTICE 'Создана структура: A → B → C';
+
+    RAISE NOTICE 'Попытка добавить C в A (цикл)';
+    BEGIN
+        PERFORM add_bom_item(prod_c, prod_a, 1);
+    EXCEPTION
+        WHEN OTHERS THEN
+            RAISE NOTICE 'Ожидаемая ошибка: %', SQLERRM;
+    END;
+
+    -- Попытка добавить изделие само в себя
+    RAISE NOTICE 'Попытка добавить A в A';
+    BEGIN
+        PERFORM add_bom_item(prod_a, prod_a, 1);
+    EXCEPTION
+        WHEN OTHERS THEN
+            RAISE NOTICE 'Ожидаемая ошибка: %', SQLERRM;
+    END;
+END $$;
 
 -- 5. Проверка запросов.
 DO $$

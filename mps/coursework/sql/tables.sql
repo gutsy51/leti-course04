@@ -1,14 +1,11 @@
--- Удалить старые таблицы, если существуют.
-DROP TABLE IF EXISTS bom, class, products, measure, material_properties;
+PRAGMA foreign_keys = ON;
 
 -- Единицы измерения.
 CREATE TABLE measure
 (
-    id         serial                NOT NULL,
-    name       character varying(64) NOT NULL,
-    name_short character varying(16) NOT NULL,
-
-    CONSTRAINT measure_id PRIMARY KEY (id),
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        VARCHAR(64) NOT NULL,
+    name_short  VARCHAR(16) NOT NULL,
 
     CONSTRAINT uq_measure_name UNIQUE (name),
     CONSTRAINT uq_measure_name_short UNIQUE (name_short)
@@ -17,219 +14,239 @@ CREATE TABLE measure
 -- Классы.
 CREATE TABLE class
 (
-    id           SERIAL PRIMARY KEY,
-
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
     name         TEXT    NOT NULL,
     display_name TEXT    NOT NULL,
+    parent_id    INTEGER,
+    measure_id   INTEGER NOT NULL,
 
-    parent_id    INTEGER REFERENCES class (id),
-    measure_id   INTEGER NOT NULL REFERENCES measure (id)
+    FOREIGN KEY (parent_id) REFERENCES class (id),
+    FOREIGN KEY (measure_id) REFERENCES measure (id)
 );
 
 -- Справочник изделий.
 CREATE TABLE products
 (
-    id              SERIAL PRIMARY KEY,
-    code            TEXT    NOT NULL UNIQUE,                  -- КП25.00.21.221
-    name            TEXT    NOT NULL,                         -- Труба 25х2.5
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    code            TEXT    NOT NULL UNIQUE,
+    name            TEXT    NOT NULL,
+    measure_id      INTEGER NOT NULL,
+    class_id        INTEGER,
+    modification_id INTEGER,
+    change_id       INTEGER,
 
-    measure_id      INTEGER NOT NULL REFERENCES measure (id), -- ЕИ измерения
-    class_id        INTEGER REFERENCES class (id),            -- Класс изделия
-    modification_id INTEGER REFERENCES products (id),         -- Родитель модификации
-    change_id       INTEGER REFERENCES products (id)          -- Родитель изменения
+    FOREIGN KEY (measure_id) REFERENCES measure (id),
+    FOREIGN KEY (class_id) REFERENCES class (id),
+    FOREIGN KEY (modification_id) REFERENCES products (id),
+    FOREIGN KEY (change_id) REFERENCES products (id)
 );
 
--- Связь изделий и их компонентов (parent-Трубопровод, состоит из: child-Труба, состоит из: child-Материал).
+-- BOM — состав изделия
 CREATE TABLE bom
 (
-    parent_id INTEGER        NOT NULL REFERENCES products (id), -- Изделие
-    child_id  INTEGER        NOT NULL REFERENCES products (id), -- Компонент
+    parent_id       INTEGER NOT NULL,
+    child_id        INTEGER NOT NULL,
+    quantity        NUMERIC(18, 6) NOT NULL CHECK (quantity > 0),
+    config_rule_id  INTEGER,
 
-    quantity  NUMERIC(18, 6) NOT NULL CHECK (quantity > 0),     -- Количество
-
-    PRIMARY KEY (parent_id, child_id)
+    PRIMARY KEY (parent_id, child_id, config_rule_id),
+    FOREIGN KEY (parent_id) REFERENCES products (id),
+    FOREIGN KEY (child_id) REFERENCES products (id),
+    FOREIGN KEY (config_rule_id) REFERENCES config_rule (id)
 );
 
-CREATE INDEX idx_product_spec_for_product
-    ON bom (parent_id);
-
-CREATE INDEX idx_product_spec_use_product
-    ON bom (child_id);
-DROP TABLE IF EXISTS input_resource, tech_op, gwc, business_entity, enum_value, enum;
+CREATE INDEX IF NOT EXISTS idx_bom_parent ON bom (parent_id);
+CREATE INDEX IF NOT EXISTS idx_bom_child ON bom (child_id);
+CREATE INDEX IF NOT EXISTS idx_bom_config_rule ON bom (config_rule_id);
 
 -- Справочник перечислений.
-CREATE TABLE IF NOT EXISTS enum
+CREATE TABLE enum
 (
-    id           SERIAL PRIMARY KEY,
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
     name         TEXT NOT NULL,
     display_name TEXT NOT NULL
 );
 
 -- Значения перечислений.
-CREATE TABLE IF NOT EXISTS enum_value
+CREATE TABLE enum_value
 (
-    id           SERIAL PRIMARY KEY,
-    enum_id      INTEGER NOT NULL REFERENCES enum (id),
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    enum_id      INTEGER NOT NULL,
     name         TEXT    NOT NULL,
     display_name TEXT    NOT NULL,
     value_int    INTEGER,
     value_real   REAL,
     value_str    TEXT,
-    value_class  INTEGER REFERENCES class (id)
+    value_class  INTEGER,
+
+    FOREIGN KEY (enum_id) REFERENCES enum (id),
+    FOREIGN KEY (value_class) REFERENCES class (id)
 );
 
--- Субъекты хозяйственной деятельности (подразделения, организации).
-CREATE TABLE IF NOT EXISTS business_entity
+-- Бизнес-субъекты (организации, подразделения)
+CREATE TABLE business_entity
 (
-    id           SERIAL PRIMARY KEY,
-    class_id     INTEGER NOT NULL REFERENCES class (id), -- Тип подразделения
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id     INTEGER NOT NULL,
     name         TEXT    NOT NULL,
     display_name TEXT    NOT NULL,
-    parent_id    INTEGER REFERENCES business_entity (id)
+    parent_id    INTEGER,
+
+    FOREIGN KEY (class_id) REFERENCES class (id),
+    FOREIGN KEY (parent_id) REFERENCES business_entity (id)
 );
 
--- Групповые рабочие центры.
-CREATE TABLE IF NOT EXISTS gwc
+-- Групповые рабочие центры
+CREATE TABLE gwc
 (
-    id           SERIAL PRIMARY KEY,
-    class_id     INTEGER NOT NULL REFERENCES class (id),           -- Тип рабочего центра
-    entity_id    INTEGER NOT NULL REFERENCES business_entity (id), -- Подразделение
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id     INTEGER NOT NULL,
+    entity_id    INTEGER NOT NULL,
     name         TEXT    NOT NULL,
-    display_name TEXT    NOT NULL
+    display_name TEXT    NOT NULL,
+
+    FOREIGN KEY (class_id) REFERENCES class (id),
+    FOREIGN KEY (entity_id) REFERENCES business_entity (id)
 );
 
--- Технологические операции.
-CREATE TABLE IF NOT EXISTS tech_op
+-- Технологические операции
+CREATE TABLE tech_op
 (
-    id               SERIAL PRIMARY KEY,
-    product_id       INTEGER NOT NULL REFERENCES products (id), -- Изделие, к которому относится операция
-    pos              INTEGER NOT NULL,                          -- Порядок операции в маршруте
-    op_class_id      INTEGER NOT NULL REFERENCES class (id),    -- Класс операции
-    prof_class_id    INTEGER NOT NULL REFERENCES class (id),    -- Класс профессии/навыка
-    gwc_id           INTEGER NOT NULL REFERENCES gwc (id),      -- Рабочий центр
-    qualification_id INTEGER REFERENCES enum_value (id),        -- Квалификация (через enum_value)
-    work_time        REAL    NOT NULL                           -- Время на операцию
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id       INTEGER NOT NULL,
+    pos              INTEGER NOT NULL,
+    op_class_id      INTEGER NOT NULL,
+    prof_class_id    INTEGER NOT NULL,
+    gwc_id           INTEGER NOT NULL,
+    qualification_id INTEGER,
+    work_time        REAL    NOT NULL,
+
+    FOREIGN KEY (product_id) REFERENCES products (id),
+    FOREIGN KEY (op_class_id) REFERENCES class (id),
+    FOREIGN KEY (prof_class_id) REFERENCES class (id),
+    FOREIGN KEY (gwc_id) REFERENCES gwc (id),
+    FOREIGN KEY (qualification_id) REFERENCES enum_value (id)
 );
 
--- Входные ресурсы с указанием предыдущей и следующей операции.
-CREATE TABLE IF NOT EXISTS input_resource
+-- Входные ресурсы
+CREATE TABLE input_resource
 (
-    in_to_id     INTEGER        NOT NULL REFERENCES tech_op (id),  -- операция, в которую ресурс поступает
-    out_to_id    INTEGER        NOT NULL REFERENCES tech_op (id),  -- операция, из которой ресурс идёт
-    product_id   INTEGER        NOT NULL REFERENCES products (id), -- ресурс / компонент
-    in_quantity  NUMERIC(18, 6) NOT NULL,                          -- количество, поступающее на in_to_id
-    out_quantity NUMERIC(18, 6) NOT NULL,                          -- количество, расходуемое из out_to_id
-    PRIMARY KEY (in_to_id, out_to_id, product_id)
+    in_to_id     INTEGER NOT NULL,
+    out_to_id    INTEGER NOT NULL,
+    product_id   INTEGER NOT NULL,
+    in_quantity  NUMERIC(18, 6) NOT NULL,
+    out_quantity NUMERIC(18, 6) NOT NULL,
+
+    PRIMARY KEY (in_to_id, out_to_id, product_id),
+    FOREIGN KEY (in_to_id) REFERENCES tech_op (id),
+    FOREIGN KEY (out_to_id) REFERENCES tech_op (id),
+    FOREIGN KEY (product_id) REFERENCES products (id)
 );
 
-DROP TABLE IF EXISTS parameter, class_parameter, product_parameter, orders, order_pos;
-
--- Справочник параметров (характеристик)
-CREATE TABLE IF NOT EXISTS parameter
+-- Параметры (характеристики)
+CREATE TABLE parameter
 (
-    id           SERIAL PRIMARY KEY,
-    class_id     INTEGER NOT NULL REFERENCES class (id),   -- Тип параметра (например, "Диаметр", "Темп.")
-    measure_id   INTEGER NOT NULL REFERENCES measure (id), -- Единица измерения
-    name         TEXT    NOT NULL,                         -- internal_name, e.g. 'diameter'
-    display_name TEXT    NOT NULL                          -- Отображаемое имя, e.g. 'Диаметр, мм'
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id     INTEGER NOT NULL,
+    measure_id   INTEGER NOT NULL,
+    name         TEXT    NOT NULL,
+    display_name TEXT    NOT NULL,
+
+    FOREIGN KEY (class_id) REFERENCES class (id),
+    FOREIGN KEY (measure_id) REFERENCES measure (id)
 );
 
--- Определяет, какие параметры обязательны для класса и их допустимый диапазон
-CREATE TABLE IF NOT EXISTS class_parameter
+-- Параметры, обязательные для класса
+CREATE TABLE class_parameter
 (
-    class_id     INTEGER NOT NULL REFERENCES class (id),
-    parameter_id INTEGER NOT NULL REFERENCES parameter (id),
-    min_value    REAL,                           -- Мин значение
-    max_value    REAL,                           -- Макс значение
-    is_required  BOOLEAN NOT NULL DEFAULT FALSE, -- Обязательно ли задавать для продукта?
+    class_id     INTEGER NOT NULL,
+    parameter_id INTEGER NOT NULL,
+    min_value    REAL,
+    max_value    REAL,
+    is_required  BOOLEAN NOT NULL DEFAULT 0,
 
-    PRIMARY KEY (class_id, parameter_id)
+    PRIMARY KEY (class_id, parameter_id),
+    FOREIGN KEY (class_id) REFERENCES class (id),
+    FOREIGN KEY (parameter_id) REFERENCES parameter (id)
 );
 
--- Хранит значения параметров для конкретных изделий
-CREATE TABLE IF NOT EXISTS product_parameter
+-- Значения параметров изделий
+CREATE TABLE product_parameter
 (
-    product_id   INTEGER NOT NULL REFERENCES products (id),
-    parameter_id INTEGER NOT NULL REFERENCES parameter (id),
+    product_id   INTEGER NOT NULL,
+    parameter_id INTEGER NOT NULL,
     value_int    INTEGER,
     value_real   REAL,
     value_str    TEXT,
-    value_enum   INTEGER REFERENCES enum_value (id), -- для ссылок на enum
+    value_enum   INTEGER,
 
     PRIMARY KEY (product_id, parameter_id),
-
-    -- Ограничение: только одно значение может быть не NULL
-    CONSTRAINT chk_single_value CHECK (
-        (value_int IS NOT NULL)::integer +
-        (value_real IS NOT NULL)::integer +
-        (value_str IS NOT NULL)::integer +
-        (value_enum IS NOT NULL)::integer
-            <= 1
-        )
+    FOREIGN KEY (product_id) REFERENCES products (id),
+    FOREIGN KEY (parameter_id) REFERENCES parameter (id),
+    FOREIGN KEY (value_enum) REFERENCES enum_value (id)
 );
 
--- Индекс для поиска по параметрам
 CREATE INDEX IF NOT EXISTS idx_product_parameter_value ON product_parameter (parameter_id, value_int, value_real);
 
--- Заказ (на производство, поставку)
-CREATE TABLE IF NOT EXISTS orders
+-- Заказы
+CREATE TABLE orders
 (
-    id         SERIAL PRIMARY KEY,
-    entity_id  INTEGER   NOT NULL REFERENCES business_entity (id), -- Кто заказал/выполняет
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    status     TEXT      NOT NULL DEFAULT 'draft'                  -- draft, confirmed, in_progress, completed
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_id  INTEGER   NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    status     TEXT      NOT NULL DEFAULT 'draft',
+
+    FOREIGN KEY (entity_id) REFERENCES business_entity (id)
 );
 
 -- Позиции заказа
-CREATE TABLE IF NOT EXISTS order_pos
+CREATE TABLE order_pos
 (
-    id         SERIAL PRIMARY KEY,
-    order_id   INTEGER        NOT NULL REFERENCES orders (id) ON DELETE CASCADE,
-    product_id INTEGER        NOT NULL REFERENCES products (id),
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id   INTEGER        NOT NULL,
+    product_id INTEGER        NOT NULL,
     quantity   NUMERIC(18, 6) NOT NULL CHECK (quantity > 0),
 
+    FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products (id),
     CONSTRAINT uq_order_product UNIQUE (order_id, product_id)
 );
 
--- Индекс для быстрого поиска по заказу
 CREATE INDEX IF NOT EXISTS idx_order_pos_order ON order_pos (order_id);
-DROP TABLE IF EXISTS config_rule, rule_predicate, rule_condition CASCADE;
 
--- Правило конфигурации
+-- Правила конфигурации
 CREATE TABLE config_rule
 (
-    id          SERIAL PRIMARY KEY,
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
     name        TEXT NOT NULL,
     description TEXT,
-    created_at  TIMESTAMP DEFAULT NOW()
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Таблица предикатов (атомарных условий)
+-- Предикаты (условия)
 CREATE TABLE rule_predicate
 (
-    id            SERIAL PRIMARY KEY,
-    parameter_id  INTEGER NOT NULL REFERENCES parameter (id),
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    parameter_id  INTEGER NOT NULL,
     value_int     INTEGER,
     value_real    REAL,
     value_str     TEXT,
-    enum_value_id INTEGER REFERENCES enum_value (id),
-    operator      TEXT    NOT NULL CHECK (operator IN ('=', '!=', '>', '<', '>=', '<=', 'IN'))
+    enum_value_id INTEGER,
+    operator      TEXT    NOT NULL CHECK (operator IN ('=', '!=', '>', '<', '>=', '<=', 'IN')),
+
+    FOREIGN KEY (parameter_id) REFERENCES parameter (id),
+    FOREIGN KEY (enum_value_id) REFERENCES enum_value (id)
 );
 
--- Условие внутри правила
+-- Условия в правилах
 CREATE TABLE rule_condition
 (
-    id           SERIAL PRIMARY KEY,
-    rule_id      INTEGER NOT NULL REFERENCES config_rule (id),
-    predicate_id INTEGER NOT NULL REFERENCES rule_predicate (id),
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    rule_id      INTEGER NOT NULL,
+    predicate_id INTEGER NOT NULL,
     "order"      INTEGER DEFAULT 1,
-    logic_op     TEXT    DEFAULT 'AND' CHECK (logic_op IN ('AND', 'OR'))
+    logic_op     TEXT    DEFAULT 'AND' CHECK (logic_op IN ('AND', 'OR')),
+
+    FOREIGN KEY (rule_id) REFERENCES config_rule (id),
+    FOREIGN KEY (predicate_id) REFERENCES rule_predicate (id)
 );
-
--- Расширяем таблицу bom: добавляем ссылку на config_rule
-ALTER TABLE bom
-    ADD COLUMN IF NOT EXISTS config_rule_id INTEGER REFERENCES config_rule (id);
-ALTER TABLE bom
-    ADD CONSTRAINT uk_bom_parent_child_rule UNIQUE (parent_id, child_id, config_rule_id);
-
-CREATE INDEX IF NOT EXISTS idx_bom_config_rule ON bom (config_rule_id);

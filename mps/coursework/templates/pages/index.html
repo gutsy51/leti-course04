@@ -1,0 +1,49 @@
+{% extends 'base_with_card.html' %}
+
+{% block title %}
+  Dashboard
+{% endblock %}
+
+{% block card_content %}
+  {% if user.is_authenticated %}
+    <div class="text-center mb-4">
+      <h5 class="card-title mb-2">{{ user.username }}</h5>
+    </div>
+
+    <div class="d-grid gap-3 mb-4">
+      <a href="{% url 'admin:index' %}" class="btn btn-secondary">База данных</a>
+      <a href="{% url 'django_db_app:classifier' %}" class="btn btn-success">Справочник</a>
+      <a href="{% url 'django_db_app:descendants_by_category' %}" class="btn btn-primary">Получить все
+        дочерние категории</a>
+      <a href="{% url 'django_db_app:parents_by_category' %}" class="btn btn-primary">Получить все
+        родительские категории</a>
+      <a href="{% url 'django_db_app:terminal_categories' %}" class="btn btn-primary">Поиск всех
+        терминальных классов заданной категории</a>
+      <a href="{% url 'django_db_app:products_with_params' %}" class="btn btn-primary">Поиск изделий
+        категории с отображением параметров</a>
+      <a href="{% url 'django_db_app:all_products_with_params' %}" class="btn btn-primary">Поиск всех
+        изделий с их параметрами</a>
+      <a href="{% url 'django_db_app:product_params' %}" class="btn btn-primary">Вывод всех параметров
+        отдельного изделия</a>
+      <a href="{% url 'django_db_app:products_with_aggregate_params' %}" class="btn btn-primary">Получить
+        все изделия с параметрами заданного агрегата.</a>
+
+
+    </div>
+
+    <br><br><br><br>
+
+    <div class="position-absolute end-0 bottom-0 m-3 d-flex flex-column align-items-end">
+      <a href="{% url 'password_change' %}" class="btn btn-secondary mb-2">Сменить пароль</a>
+      <form method="post" action="{% url 'logout' %}" style="display: inline;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger mb-2">Выйти</button>
+      </form>
+    </div>
+  {% else %}
+    <p class="text-center">Вы не авторизованы</p>
+    <div class="text-center">
+      <a href="{% url 'login' %}" class="btn btn-outline-primary">Войти</a>
+    </div>
+  {% endif %}
+{% endblock %}

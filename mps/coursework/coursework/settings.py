@@ -20,7 +20,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django_bootstrap5'
+    'django_bootstrap5',
+    'db_admin',
 ]
 
 MIDDLEWARE = [
@@ -52,7 +53,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'coursework.wsgi.application'
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 # Database definition.
 DATABASES = {

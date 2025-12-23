@@ -270,7 +270,7 @@ class ProductParameter(models.Model):
 
 class Orders(models.Model):
     entity = models.ForeignKey(BusinessEntity, models.DO_NOTHING)
-    created_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
     status = models.TextField()
 
     class Meta:

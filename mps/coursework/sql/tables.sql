@@ -3,9 +3,9 @@ PRAGMA foreign_keys = ON;
 -- Единицы измерения.
 CREATE TABLE measure
 (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        VARCHAR(64) NOT NULL,
-    name_short  VARCHAR(16) NOT NULL,
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       VARCHAR(64) NOT NULL,
+    name_short VARCHAR(16) NOT NULL,
 
     CONSTRAINT uq_measure_name UNIQUE (name),
     CONSTRAINT uq_measure_name_short UNIQUE (name_short)
@@ -44,12 +44,13 @@ CREATE TABLE products
 -- BOM — состав изделия
 CREATE TABLE bom
 (
-    parent_id       INTEGER NOT NULL,
-    child_id        INTEGER NOT NULL,
-    quantity        NUMERIC(18, 6) NOT NULL CHECK (quantity > 0),
-    config_rule_id  INTEGER,
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    parent_id      INTEGER        NOT NULL,
+    child_id       INTEGER        NOT NULL,
+    quantity       NUMERIC(18, 6) NOT NULL CHECK (quantity > 0),
+    config_rule_id INTEGER,
 
-    PRIMARY KEY (parent_id, child_id, config_rule_id),
+    UNIQUE (parent_id, child_id, config_rule_id),
     FOREIGN KEY (parent_id) REFERENCES products (id),
     FOREIGN KEY (child_id) REFERENCES products (id),
     FOREIGN KEY (config_rule_id) REFERENCES config_rule (id)
@@ -131,15 +132,16 @@ CREATE TABLE tech_op
 -- Входные ресурсы
 CREATE TABLE input_resource
 (
-    in_to_id     INTEGER NOT NULL,
-    out_to_id    INTEGER NOT NULL,
-    product_id   INTEGER NOT NULL,
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    in_to        INTEGER        NOT NULL,
+    out_to       INTEGER        NOT NULL,
+    product_id   INTEGER        NOT NULL,
     in_quantity  NUMERIC(18, 6) NOT NULL,
     out_quantity NUMERIC(18, 6) NOT NULL,
 
-    PRIMARY KEY (in_to_id, out_to_id, product_id),
-    FOREIGN KEY (in_to_id) REFERENCES tech_op (id),
-    FOREIGN KEY (out_to_id) REFERENCES tech_op (id),
+    UNIQUE (in_to, out_to, product_id),
+    FOREIGN KEY (in_to) REFERENCES tech_op (id),
+    FOREIGN KEY (out_to) REFERENCES tech_op (id),
     FOREIGN KEY (product_id) REFERENCES products (id)
 );
 
@@ -159,13 +161,14 @@ CREATE TABLE parameter
 -- Параметры, обязательные для класса
 CREATE TABLE class_parameter
 (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
     class_id     INTEGER NOT NULL,
     parameter_id INTEGER NOT NULL,
     min_value    REAL,
     max_value    REAL,
-    is_required  BOOLEAN NOT NULL DEFAULT 0,
+    is_required  BOOLEAN NOT NULL,
 
-    PRIMARY KEY (class_id, parameter_id),
+    UNIQUE (class_id, parameter_id),
     FOREIGN KEY (class_id) REFERENCES class (id),
     FOREIGN KEY (parameter_id) REFERENCES parameter (id)
 );
@@ -173,6 +176,7 @@ CREATE TABLE class_parameter
 -- Значения параметров изделий
 CREATE TABLE product_parameter
 (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
     product_id   INTEGER NOT NULL,
     parameter_id INTEGER NOT NULL,
     value_int    INTEGER,
@@ -180,7 +184,7 @@ CREATE TABLE product_parameter
     value_str    TEXT,
     value_enum   INTEGER,
 
-    PRIMARY KEY (product_id, parameter_id),
+    UNIQUE (product_id, parameter_id),
     FOREIGN KEY (product_id) REFERENCES products (id),
     FOREIGN KEY (parameter_id) REFERENCES parameter (id),
     FOREIGN KEY (value_enum) REFERENCES enum_value (id)
@@ -205,11 +209,11 @@ CREATE TABLE order_pos
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     order_id   INTEGER        NOT NULL,
     product_id INTEGER        NOT NULL,
-    quantity   NUMERIC(18, 6) NOT NULL CHECK (quantity > 0),
+    quantity   NUMERIC(18, 6) NOT NULL,
 
-    FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE,
-    FOREIGN KEY (product_id) REFERENCES products (id),
-    CONSTRAINT uq_order_product UNIQUE (order_id, product_id)
+    UNIQUE (order_id, product_id),
+    FOREIGN KEY (order_id) REFERENCES orders (id),
+    FOREIGN KEY (product_id) REFERENCES products (id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_order_pos_order ON order_pos (order_id);
@@ -244,8 +248,8 @@ CREATE TABLE rule_condition
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     rule_id      INTEGER NOT NULL,
     predicate_id INTEGER NOT NULL,
-    "order"      INTEGER DEFAULT 1,
-    logic_op     TEXT    DEFAULT 'AND' CHECK (logic_op IN ('AND', 'OR')),
+    "order"      INTEGER,
+    logic_op     TEXT,
 
     FOREIGN KEY (rule_id) REFERENCES config_rule (id),
     FOREIGN KEY (predicate_id) REFERENCES rule_predicate (id)

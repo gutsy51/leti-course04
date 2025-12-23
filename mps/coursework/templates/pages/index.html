@@ -1,8 +1,6 @@
 {% extends 'base_with_card.html' %}
 
-{% block title %}
-  Dashboard
-{% endblock %}
+{% block title %}Dashboard{% endblock %}
 
 {% block card_content %}
   {% if user.is_authenticated %}
@@ -12,23 +10,7 @@
 
     <div class="d-grid gap-3 mb-4">
       <a href="{% url 'admin:index' %}" class="btn btn-secondary">База данных</a>
-      <a href="{% url 'django_db_app:classifier' %}" class="btn btn-success">Справочник</a>
-      <a href="{% url 'django_db_app:descendants_by_category' %}" class="btn btn-primary">Получить все
-        дочерние категории</a>
-      <a href="{% url 'django_db_app:parents_by_category' %}" class="btn btn-primary">Получить все
-        родительские категории</a>
-      <a href="{% url 'django_db_app:terminal_categories' %}" class="btn btn-primary">Поиск всех
-        терминальных классов заданной категории</a>
-      <a href="{% url 'django_db_app:products_with_params' %}" class="btn btn-primary">Поиск изделий
-        категории с отображением параметров</a>
-      <a href="{% url 'django_db_app:all_products_with_params' %}" class="btn btn-primary">Поиск всех
-        изделий с их параметрами</a>
-      <a href="{% url 'django_db_app:product_params' %}" class="btn btn-primary">Вывод всех параметров
-        отдельного изделия</a>
-      <a href="{% url 'django_db_app:products_with_aggregate_params' %}" class="btn btn-primary">Получить
-        все изделия с параметрами заданного агрегата.</a>
-
-
+      <a href="{% url 'db_admin:product_list' %}" class="btn btn-info">Маршрутные карты и расход</a>
     </div>
 
     <br><br><br><br>

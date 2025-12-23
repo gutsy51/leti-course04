@@ -1,0 +1,36 @@
+{% extends "base_with_card.html" %}
+
+{% block title %}Расход материалов: {{ product.name }}{% endblock %}
+
+{% block card_content %}
+  <h5>Расход материалов: <strong>{{ product.name }}</strong> ({{ product.code }})</h5>
+
+  {% if costs %}
+    <table class="table table-bordered">
+      <thead class="table-light">
+        <tr>
+          <th>Код</th>
+          <th>Наименование</th>
+          <th>Количество</th>
+          <th>Ед. изм.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in costs %}
+          <tr>
+            <td><code>{{ item.product_code }}</code></td>
+            <td>{{ item.product_name }}</td>
+            <td>{{ item.total_quantity|floatformat:3 }}</td>
+            <td>{{ item.unit }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="text-muted">Нет данных о расходе материалов.</p>
+  {% endif %}
+
+  <div class="mt-3">
+    <a href="{% url 'db_admin:product_list' %}" class="btn btn-outline-secondary btn-sm">Назад</a>
+  </div>
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "base_with_card.html" %}
+
+{% block title %}Маршрутная карта: {{ product.name }}{% endblock %}
+
+{% block card_content %}
+  <h5>Маршрутная карта: <strong>{{ product.name }}</strong> ({{ product.code }})</h5>
+
+  {% if operations %}
+    <table class="table table-bordered">
+      <thead class="table-light">
+        <tr>
+          <th>№</th>
+          <th>Операция</th>
+          <th>ГРЦ</th>
+          <th>Подразделение</th>
+          <th>Время, мин</th>
+          <th>Квалификация</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for op in operations %}
+          <tr>
+            <td>{{ op.pos }}</td>
+            <td>{{ op.op_class_name }}</td>
+            <td>{{ op.gwc_name }}</td>
+            <td>{{ op.entity_name }}</td>
+            <td>{{ op.work_time }}</td>
+            <td>{{ op.qualification|default:"—" }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="text-muted">Нет операций для этого изделия.</p>
+  {% endif %}
+
+  <div class="mt-3">
+    <a href="{% url 'db_admin:product_list' %}" class="btn btn-outline-secondary btn-sm">Назад</a>
+  </div>
+{% endblock %}
